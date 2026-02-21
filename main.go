@@ -17,11 +17,6 @@ import (
 	"strings"
 )
 
-type model struct {
-	IdArray  []string         // items on the to-do list
-	cursor   int              // which to-do list item our cursor is pointing at
-	selected map[int]struct{} // which to-do items are selected
-}
 type queryModel struct {
 	Id    []int
 	title []string
@@ -29,9 +24,14 @@ type queryModel struct {
 	link  []string
 }
 
+type model struct {
+	QModel   queryModel
+	cursor   int              // which to-do list item our cursor is pointing at
+	selected map[int]struct{} // which to-do items are selected
+}
+
 func initModel() model {
 	return model{
-		IdArray: []string{"title", "price"},
 
 		selected: make(map[int]struct{}),
 	}
@@ -41,11 +41,14 @@ func (m model) Init() tea.Cmd {
 	return nil
 }
 
-func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
-	switch message := message.(type) {
+	// for _, i := range q.Id {
+	// 	m.IdArray[i] = q.Id[i]
+	// }
+	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch message.String() {
+		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "up", "k":
@@ -53,7 +56,7 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "j":
-			if m.cursor < len(m.IdArray)-1 {
+			if m.cursor < len(m.QModel.Id)-1 {
 				m.cursor++
 			}
 		case "enter", " ":
@@ -77,7 +80,7 @@ func (m model) View() string {
 	string_l := "what are you buying:\n\n"
 
 	tea.ClearScreen()
-	for i, choice := range m.IdArray {
+	for i, choice := range m.QModel.Id {
 		cursor_l := " "
 		if m.cursor == i {
 			cursor_l = ">"
