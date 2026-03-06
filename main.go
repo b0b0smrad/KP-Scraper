@@ -2,10 +2,13 @@ package main
 
 import (
 	// "encoding/json"
+	// "charm.land/bubbles/v2/list"
+	// "charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/go-rod/rod"
 	"log"
 	"net/url"
@@ -28,6 +31,7 @@ type model struct {
 	sort     bool
 	cursor   int              // which to-do list item our cursor is pointing at
 	selected map[int]struct{} // which to-do items are selected
+	viewport viewport.Model
 }
 
 func initModel() model {
@@ -97,17 +101,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		}
 
+		m.viewport.Update(msg)
 	}
 	return m, nil
 }
 
-func (m model) View() string {
+func (m model) View() tea.View {
 	if len(m.QModel.Id) == 0 {
-		return "\n  Searching KupujemProdajem... Please wait.\n"
+		return tea.NewView("\n  Searching KupujemProdajem... Please wait.\n")
 	}
 
 	var b strings.Builder
 	b.WriteString("What are you buying:\n\n")
+	m.viewport.View()
 
 	for i, title := range m.QModel.title {
 		cursor := " "
@@ -120,8 +126,7 @@ func (m model) View() string {
 		}
 		// Using title instead of ID for better visibility
 		pink := lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-		gray := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Background(lipgloss.BrightGreen)
-
+		gray := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Background(lipgloss.Color("#6984A9"))
 		// Build the line piece by piece
 		if !m.sort {
 			// 1. Format the string
@@ -135,7 +140,7 @@ func (m model) View() string {
 	}
 
 	b.WriteString("\nPress q to quit\n")
-	return b.String()
+	return tea.NewView(b.String())
 }
 func sendQuery(keyword string) queryModel {
 	searchURL := "https://www.kupujemprodajem.com/pretraga?keywords=" + url.QueryEscape(keyword)
