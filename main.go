@@ -2,18 +2,16 @@ package main
 
 import (
 	// "encoding/json"
+	"charm.land/lipgloss/v2"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/go-rod/rod"
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
-	// "io"
-	// "log"
-	// "net/http"
-	"net/url"
 	"strings"
 )
 
@@ -121,12 +119,18 @@ func (m model) View() string {
 			checked = "x"
 		}
 		// Using title instead of ID for better visibility
-		if m.sort != false {
+		pink := lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+		gray := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Background(lipgloss.BrightGreen)
 
-			b.WriteString(fmt.Sprintf("%s [%s] %s - %s\n", cursor, checked, title, m.QModel.price[i]))
+		// Build the line piece by piece
+		if !m.sort {
+			// 1. Format the string
+			str := fmt.Sprintf("%s [%s] %s - %s", cursor, pink.Render(checked), gray.Render(title), m.QModel.price[i])
+			// 2. Render it and write it to the builder
+			b.WriteString(str + "\n")
 		} else {
-			b.WriteString(fmt.Sprintf("%s [%s] %s - %s\n", cursor, checked, m.QModel.price[i], title))
-
+			str := fmt.Sprintf("%s [%s] %s - %s", cursor, pink.Render(checked), m.QModel.price[i], gray.Render(title))
+			b.WriteString(str + "\n")
 		}
 	}
 
