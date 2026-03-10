@@ -4,30 +4,33 @@ import (
 	// "encoding/json"
 	// "charm.land/bubbles/v2/list"
 	// "charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"fmt"
+	"github.com/PuerkitoBio/goquery"
+	"github.com/go-rod/rod"
 	"log"
 	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
-
-	"charm.land/bubbles/v2/spinner"
-	"charm.land/bubbles/v2/viewport"
-	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
-	"github.com/PuerkitoBio/goquery"
-	"github.com/go-rod/rod"
 )
 
 const listHeight = 10
 
 type queryModel struct {
-	Id    []int
-	title []string
-	price []string
-	link  []string
+	Id        []int
+	title     []string
+	currency  []string
+	price     []string
+	link      []string
+	sortPrice bool
 }
+
 type queryResultMsg queryModel
 
 type canvasT struct {
@@ -46,6 +49,44 @@ type model struct {
 	viewport   viewport.Model
 }
 
+func sortPrice(qm queryModel) queryModel {
+
+	if qm.sortPrice == true {
+		temp := []float64{0}
+		for index, value := range qm.price {
+
+			if qm.price[index] != "Kontakt" {
+
+				cleanPrice := strings.ReplaceAll(value, ".", "")
+				i, err := strconv.ParseFloat(cleanPrice, 64)
+				if err != nil {
+					fmt.Printf("error: %s", err)
+					os.Exit(1)
+				}
+
+				temp = append(temp, i)
+				for temp[index] > temp[index+1] {
+					temp[index] = temp[index+1]
+					temp[index+1] = temp[index]
+				}
+				qm.price = append(qm.price, strconv.FormatFloat(temp[index], 'f', 8, 64))
+
+			}
+		}
+		return qm
+	} else {
+		return qm
+
+	}
+
+}
+
+func convertCurrencyToEUR(price float64) int {
+	results := int(price) / 117
+	return results
+}
+
+// func convertCurrencyToRSD()
 func initModel() model {
 	// code providing spinner (loading screen tui)
 	sp := spinner.New()
@@ -56,6 +97,7 @@ func initModel() model {
 
 	// l := list.New()
 	return model{
+		QModel:   queryModel{sortPrice: false},
 		spinner:  sp,
 		selected: make(map[int]struct{}),
 		sort:     false,
@@ -131,6 +173,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "s":
 			m.sort = !m.sort
+		case "l":
+			if m.QModel.sortPrice == true {
+				m.QModel = sortPrice(m.QModel)
+			}
+			m.QModel.sortPrice = !m.QModel.sortPrice
+
 		case "enter", " ":
 			if err := openURL(m.QModel.link[m.cursor]); err != nil {
 				fmt.Printf("error openining url %v\n", err)
@@ -183,16 +231,16 @@ func (m model) View() tea.View {
 		// Build the line piece by piece
 		if !m.sort {
 			// 1. Format the string
-			str := fmt.Sprintf("%s [%s] %s - %s", cursor, pink.Render(checked), gray.Render(m.QModel.title[i]), m.QModel.price[i])
+			str := fmt.Sprintf("%s [%s] %s%s - %s", cursor, pink.Render(checked), gray.Render(m.QModel.title[i]), gray.Render(m.QModel.currency[i]), m.QModel.price[i])
 			// 2. Render it and write it to the builder
 			b.WriteString(str + "\n")
 		} else {
-			str := fmt.Sprintf("%s [%s] %s - %s", cursor, pink.Render(checked), m.QModel.price[i], gray.Render(m.QModel.title[i]))
+			str := fmt.Sprintf("%s [%s] %s%s - %s", cursor, pink.Render(checked), gray.Render(m.QModel.currency[i]), m.QModel.price[i], gray.Render(m.QModel.title[i]))
 			b.WriteString(str + "\n")
 		}
 	}
 
-	b.WriteString("\nPress q to quit\n")
+	b.WriteString("\n PRESS: [(q) quit] [(s) sort-order] [(l) sort-price] \n")
 	return tea.NewView(b.String())
 }
 func sendQuery(keyword string) queryModel {
@@ -218,7 +266,14 @@ func sendQuery(keyword string) queryModel {
 		if title != "" {
 			Qbase.Id = append(Qbase.Id, i)
 			Qbase.title = append(Qbase.title, title)
-			Qbase.price = append(Qbase.price, price)
+			if price != "Kontakt" {
+				parts := strings.Split(strings.TrimSpace(price), " ")
+				if len(parts) == 2 {
+					Qbase.price = append(Qbase.price, parts[0])
+					Qbase.currency = append(Qbase.currency, parts[1])
+				}
+
+			}
 			Qbase.link = append(Qbase.link, link)
 			// fmt.Printf("Title: %s\n", title) // Fixed: added title argument
 			// fmt.Printf("Price: %s\n", price)
