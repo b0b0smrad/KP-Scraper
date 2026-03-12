@@ -29,6 +29,7 @@ type queryModel struct {
 	price     []string
 	link      []string
 	sortPrice bool
+	converted bool
 }
 
 type queryResultMsg queryModel
@@ -41,6 +42,8 @@ type model struct {
 	spinner    spinner.Model
 	canvas     canvasT
 	QModel     queryModel
+	QSorted    queryModel
+	QModelCopy queryModel
 	sort       bool
 	cursor     int // which to-do list item our cursor is pointing at
 	startIndex int
@@ -49,40 +52,52 @@ type model struct {
 	viewport   viewport.Model
 }
 
-func sortPrice(qm queryModel) queryModel {
+func sortPrice(qm *queryModel) queryModel {
 
-	if qm.sortPrice == true {
-		temp := []float64{0}
+	// bm := qm
+	// newQm := make([]string, len(qm))
+	temp := []float64{}
+	// sorted := make([]string, len(qm.price))
+	if qm.converted != true {
 		for index, value := range qm.price {
+			cleanValue := strings.ReplaceAll(value, ".", "")
+			val, _ := strconv.ParseFloat(cleanValue, 64)
 
-			if qm.price[index] != "Kontakt" {
+			var finalEuro float64
+			if qm.currency[index] == "din" {
+				finalEuro = val / 117.0
+				qm.currency[index] = "€" // Update label
+			} else {
+				finalEuro = val // Already in Euro
+			}
+			temp = append(temp, finalEuro)
+		}
+	}
 
-				cleanPrice := strings.ReplaceAll(value, ".", "")
-				i, err := strconv.ParseFloat(cleanPrice, 64)
-				if err != nil {
-					fmt.Printf("error: %s", err)
-					os.Exit(1)
-				}
-
-				temp = append(temp, i)
-				for temp[index] > temp[index+1] {
-					temp[index] = temp[index+1]
-					temp[index+1] = temp[index]
-				}
-				qm.price = append(qm.price, strconv.FormatFloat(temp[index], 'f', 8, 64))
+	for n := 0; n < len(temp); n++ {
+		for i := 0; i < len(temp)-1; i++ {
+			j := i + 1
+			if temp[i] > temp[j] {
+				temp[i], temp[j] = temp[j], temp[i]
+				qm.Id[i], qm.Id[j] = qm.Id[j], qm.Id[i]
+				qm.title[i], qm.title[j] = qm.title[j], qm.title[i]
+				qm.currency[i], qm.currency[j] = qm.currency[j], qm.currency[i]
+				qm.link[i], qm.link[j] = qm.link[j], qm.link[i]
 
 			}
 		}
-		return qm
-	} else {
-		return qm
 
 	}
+	for k := 0; k < len(qm.price); k++ {
+		qm.price[k] = strconv.FormatFloat(temp[k], 'f', 0, 64)
+	}
 
+	qm.converted = true
+	return *qm
 }
 
-func convertCurrencyToEUR(price float64) int {
-	results := int(price) / 117
+func convertCurrencyToEUR(price float64) float64 {
+	results := price / 117.0
 	return results
 }
 
@@ -97,7 +112,9 @@ func initModel() model {
 
 	// l := list.New()
 	return model{
-		QModel:   queryModel{sortPrice: false},
+
+		QModel:   queryModel{sortPrice: false, converted: false},
+		QSorted:  queryModel{sortPrice: true, converted: false},
 		spinner:  sp,
 		selected: make(map[int]struct{}),
 		sort:     false,
@@ -129,17 +146,16 @@ func runQuery(keyword string) tea.Cmd {
 func (m model) Init() tea.Cmd {
 
 	keyword := "TCL 4k"
+	query := runQuery(keyword)
+
 	return tea.Batch(
 		m.spinner.Tick,
-		runQuery(keyword),
+		query,
 	)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
-	// for _, i := range q.Id {
-	// 	m.IdArray[i] = q.Id[i]
-	// }
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.canvas.width = msg.Width
@@ -147,8 +163,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case queryResultMsg:
 		m.QModel = queryModel(msg)
+		// m.QSorted = queryModel(msg)
+		// m.QSorted = m.QModel
 		m.viewport.Update(msg)
+		// m.QSorted.Id = append([]int{}, m.QModel.Id...)
+		// m.QSorted.price = append([]string{}, m.QModel.price...)
+		// m.QSorted.link = append([]string{}, m.QModel.link...)
+		// m.QSorted.title = append([]string{}, m.QModel.title...)
+		// m.QSorted.currency = append([]string{}, m.QModel.currency...)
+
+		m.QSorted.Id = append([]int{}, m.QModel.Id...)
+		m.QSorted.price = append([]string{}, m.QModel.price...)
+		m.QSorted.link = append([]string{}, m.QModel.link...)
+		m.QSorted.title = append([]string{}, m.QModel.title...)
+		m.QSorted.currency = append([]string{}, m.QModel.currency...)
+		m.QSorted = sortPrice(&m.QSorted)
+		m.QModelCopy.Id = append([]int{}, m.QModel.Id...)
+		m.QModelCopy.price = append([]string{}, m.QModel.price...)
+		m.QModelCopy.link = append([]string{}, m.QModel.link...)
+		m.QModelCopy.title = append([]string{}, m.QModel.title...)
+		m.QModelCopy.currency = append([]string{}, m.QModel.currency...)
 		return m, m.spinner.Tick
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -174,10 +210,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "s":
 			m.sort = !m.sort
 		case "l":
-			if m.QModel.sortPrice == true {
-				m.QModel = sortPrice(m.QModel)
-			}
 			m.QModel.sortPrice = !m.QModel.sortPrice
+			if m.QModel.sortPrice == true {
+				m.QModel = m.QSorted
+
+			} else {
+				m.QModel = m.QModelCopy
+			}
 
 		case "enter", " ":
 			if err := openURL(m.QModel.link[m.cursor]); err != nil {
@@ -212,11 +251,11 @@ func (m model) View() tea.View {
 	}
 	m.viewport.View()
 	maxVisible := m.startIndex + m.height
-	if maxVisible > len(m.QModel.title) {
+	if maxVisible > len(m.QModel.title) || maxVisible < len(m.QModel.title) {
 		maxVisible = len(m.QModel.title)
 	}
-
-	for i := m.startIndex; i < maxVisible; i++ {
+	end := min(m.startIndex+maxVisible+10, len(m.QModel.title))
+	for i := m.startIndex; i < end; i++ {
 		cursor := " "
 		if m.cursor == i {
 			cursor = ">"
@@ -229,15 +268,17 @@ func (m model) View() tea.View {
 		pink := lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 		gray := lipgloss.NewStyle().Foreground(lipgloss.Color("144"))
 		// Build the line piece by piece
+
 		if !m.sort {
 			// 1. Format the string
-			str := fmt.Sprintf("%s [%s] %s%s - %s", cursor, pink.Render(checked), gray.Render(m.QModel.title[i]), gray.Render(m.QModel.currency[i]), m.QModel.price[i])
+			str1 := fmt.Sprintf("%s [%s] %s - %s%s", cursor, pink.Render(checked), gray.Render(m.QModel.title[i]), gray.Render(m.QModel.currency[i]), m.QModel.price[i])
 			// 2. Render it and write it to the builder
-			b.WriteString(str + "\n")
+			b.WriteString(str1 + "\n")
 		} else {
-			str := fmt.Sprintf("%s [%s] %s%s - %s", cursor, pink.Render(checked), gray.Render(m.QModel.currency[i]), m.QModel.price[i], gray.Render(m.QModel.title[i]))
-			b.WriteString(str + "\n")
+			str2 := fmt.Sprintf("%s [%s] %s%s - %s", cursor, pink.Render(checked), gray.Render(m.QModel.currency[i]), m.QModel.price[i], gray.Render(m.QModel.title[i]))
+			b.WriteString(str2 + "\n")
 		}
+
 	}
 
 	b.WriteString("\n PRESS: [(q) quit] [(s) sort-order] [(l) sort-price] \n")
@@ -263,15 +304,13 @@ func sendQuery(keyword string) queryModel {
 		price := strings.TrimSpace(s.Find(".AdItem_price__VZ_at").Text())
 		link, _ := s.Find("a.Link_link__cqSOS.Link_inherit__05Kzh").Attr("href")
 		// fmt.Printf("\n=== Item %d ===\n", i+1)
-		if title != "" {
+		if title != "" && price != "Kontakt" {
 			Qbase.Id = append(Qbase.Id, i)
 			Qbase.title = append(Qbase.title, title)
-			if price != "Kontakt" {
-				parts := strings.Split(strings.TrimSpace(price), " ")
-				if len(parts) == 2 {
-					Qbase.price = append(Qbase.price, parts[0])
-					Qbase.currency = append(Qbase.currency, parts[1])
-				}
+			parts := strings.Split(strings.TrimSpace(price), " ")
+			if len(parts) == 2 {
+				Qbase.price = append(Qbase.price, parts[0])
+				Qbase.currency = append(Qbase.currency, parts[1])
 
 			}
 			Qbase.link = append(Qbase.link, link)
@@ -295,6 +334,16 @@ func main() {
 	// 	fmt.Printf("title: %s; price: %s\n\n", data.title[i], data.price[i])
 	// }
 	// Use the REGULAR search page, not API
+
+	// results := sendQuery(keyword)
+	//
+	// results.sortPrice = true
+	// printable := sortPrice(&results)
+	// for _, value := range printable.price {
+	// 	fmt.Printf("\nprice: %s\n", value)
+	//
+	// }
+
 	p := tea.NewProgram(initModel())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Errrrorrrr: %v", err)
