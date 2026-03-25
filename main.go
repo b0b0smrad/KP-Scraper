@@ -305,7 +305,7 @@ func sendQuery(keyword string) []queryModel {
 
 	return Qbase
 }
-func main() {
+func main(keyword string) {
 
 	// keyword := "TCL 4k"
 	//
